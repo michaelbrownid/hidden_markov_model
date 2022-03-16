@@ -1,0 +1,349 @@
+<head>
+<!--- <script type="text/javascript"  src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">--->
+<script type="text/javascript"  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+<!--- render in pre, which is not default ---->
+MathJax.Hub.Config({
+  tex2jax: {
+    skipTags: ["script","noscript","style","textarea","code"],
+    inlineMath: [['$','$'], ['\\(','\\)']]
+  },
+  chtml: {
+    scale: 0.5,
+    minscale: 0.3
+  }
+});
+</script>
+</head>
+
+<pre>
+
+goal: hidden markov model. all of it.
+
+================================
+HMM code moved from /media/datastore/storestudio/Desktop180227/hmm/
+and then from/media/datastore/storestudio/workspace2020/hidden-markov-model/
+
+================================
+
+https://www.stat.cmu.edu/~cshalizi/dst/18/lectures/24/lecture-24.html
+http://proceedings.mlr.press/v89/ramachandran19a/ramachandran19a.pdf
+https://www.cs.cmu.edu/~tom/10701_sp11/recitations/HMM%20and%20Neural%20Network.pdfz
+
+Joint P(O,S). Can randomly generate states and outputs. Niave bayes.
+Pr(Ot∣ Ot−1,Ot−2,…,O1, St,St−1,…,S1)=Pr(Ot∣St).
+
+Discriminative P(S|O). Doesn't model S! Logistic regression.
+
+================================
+================================
+================================
+# A Simple Little Proabilistic Finite State Machine
+
+TODO: picture
+
+The machine is defined by:
+
+- $N$: the number of states
+
+- $A$: the size of the output alphabet
+
+- $\Theta$: the state output probabilities: $\Theta( S_i, o ) = P(o |
+  S_i)$ probability of outputting symbol $o$ in state
+  $S_i$. size=$N*A$
+  
+- $\Gamma$: the transistion probabilities between states:
+  $\Gamma(S_i,S_j) = P(S_i \rightarrow S_j)$ probability of moving to
+  state $j$ from state $i$. size=$N^2$
+
+- $\gamma$: the initial state distribution: $\gamma(S_i)$ probability
+   of starting in state $i$. size=$N$
+
+- $S^*$: set of accepting states
+
+TODO: the generating process. the accepting process.
+
+
+================================
+# Evaluation and Forward
+
+I have an output string $O$ of length $L$, what is the probability
+that my machine produced it, $P(O)$?
+
+Straightforard: List all possible ways of the machine moving through
+the states for $L$ steps. For a given state sequence, the probability
+under the machine just multiplies the transistion and output
+probablilities through the the sequence; everything is known. Sum up
+all paths to get the total probablility.
+
+$P(O) = \sum_S P(O,S) = \sum_S [\gamma(S_1) \Theta(S_1, O_1)] * [\Gamma(S_1, S_2) \Theta(S_2,O_2)] * ... * [\Gamma(S_{L-1},S_L) \Theta(S_L, O_L)]$
+
+I've grouped the individual transistion and output terms.
+
+There are $N^L$ terms in this sum because we are examining ALL
+possible state sequences! For ten states and a 100-long output, thats
+exponentially large $10^{100}$ or practically infinity. So it appears we
+can't compute it!
+
+However lets rewrite it as matrix multiplies:
+[https://cran.r-project.org/web/packages/mHMMbayes/vignettes/estimation-mhmm.pdf]
+
+$P(O) = \gamma \Theta(O_1) \Gamma \Theta(O_2) \Gamma \Theta(O_3) ... \Gamma \Theta(O_L) 1$
+
+The abuses my notation slightly as $\gamma, \Gamma, Theta(O)$ are now
+considered to be diagonal matrices. Rather than pushing forward a
+single path at a time and summing, this makes it clear we can push
+forward all paths together in a vector accumulating output and
+transisitions. The key insight is that at any point the process must
+be in one of the $N$ states and because we are making Markov choices
+the past history does not matter. Matrix multiply is order $N^3$ so
+the overall matrix computation is $2*L*N^3$, much better than $N^L$!!
+(Note that because many of the components are diagonal, it is even
+easier.)
+
+There is an analogy to binomial expanstions and binomial
+distributions. In binomial if you flip 100 coins, you really have an
+exponential event space of size $2^{100}$. However, because you only
+care about the number of heads and tails, you can reduce this to $N$
+terms and keep track of the degeneracies in the factorial choose
+functions. It is _exactly_ the same information but symmetries allow
+you to do massive simplifications. Binomal: reduce $2^L$ to $L$
+because only the count of number of heads is important, not the exact
+sequence. Here: reduce $N^L$ to $LN^3$ because under Markov only the
+current state is important, not the exact sequence history.
+
+To make this clear let's step through:
+
+--- Case $L=1$:
+
+$P(O) = \sum_{S_1} \gamma(S_1) \Theta(S_1,O_1)$
+
+This is just the one step into the initial states and outputting 1st
+symbol.
+
+---- Case $L=2$:
+
+$P(O) = \sum_{S_1} \sum_{S_2} [\gamma(S_1) \Theta(S_1,O_1)] [\Gamma(S_1,S_2) \Theta(S_2,O_2)]$
+
+That first term can be pulled through the $S_2$ sum:
+
+$ P(O) = \sum_{S_1} [\gamma(S_1) \Theta(S_1,O_1)] \sum_{S_2} [\Gamma(S_1,S_2) \Theta(S_2,O_2)]$
+
+Let's introduce a tracking vector $F$ and matrices:
+
+$ P(O) = \sum_{s} F(s,1) \Gamma \Theta(O_2)$
+
+$ P(O) = \sum_{s} F(s,2)$
+
+Here $F(s,1)$ is a $(1,N)$ vector that gives the probability of
+outputting the first symbol and being in state $s$. It is just the
+$L=1$ case vector.
+
+The sum over $S_2$ is in the matrix multiply which captures all ways
+of being in state $S_1$ outputing $O_1$ followed by all ways
+transistioning to state $S_2$ and outputing $O_2$. I've then renamed
+and called out $F(x,2)$ explicity.
+
+Let's look at the first entry $F(s1,2)$. Here $s1$ is the specific
+first state as opposed to the variable $S_1$.
+
+By left matrix multiply $y = x * M$, the $y_k$ component is the dot product
+of $x$ with the $k$ column of $M$: $y[k] = x \cdot M[:,k] = \sum_z
+x[z] M[z,k]$
+
+
+$F(s1,2) = \sum_{z} F(z,1) \Gamma(z,s1) \Theta(s1,O_2)$ For every
+possible previous state $z$, take probability of being there after
+first symbol, transistion to $s1$, and output the second symbol in
+$s1$
+
+---- Case $L=3$:
+
+You can see where I'm going...
+
+$P(O) = \sum_{S_1} \sum_{S_2} \sum_{S_3} [\gamma(S_1) \Theta(S_1,O_1)] [\Gamma(S_1,S_2) \Theta(S_2,O_2)] [\Gamma(S_2,S_3) \Theta(S_3,O_3)]$
+
+$P(O) = \sum_{S_1} [\gamma(S_1) \Theta(S_1,O_1)] \sum_{S_2} [\Gamma(S_1,S_2) \Theta(S_2,O_2)] \sum_{S_3}  [\Gamma(S_2,S_3) \Theta(S_3,O_3)]$
+
+$P(O) = \sum_{s} F(s,2) \Gamma \Theta(O_3)]$
+
+$P(O) = \sum_{s} F(s,3)$
+
+We have a recursive defnition for $F$:
+
+$F(s,i+1) = F(s,i) \Gamma \Theta(O_{i+1})$
+
+This is called the forward matrix in Hidden Markov Models. $F(s,i)$
+gives the probability of outputting the first to the $i$ symbol and
+being in state $s$. It is well known. Here I showed it explicity by
+sum and matrix manipulations. You can also get to it by message
+passing in belief propagation in trees [ Pearl, Judea
+(1988). Probabilistic Reasoning in Intelligent Systems: Networks of
+Plausible Inference (2nd ed.). San Francisco, CA: Morgan
+Kaufmann. ISBN 978-1-55860-479-7. ]
+
+================================
+# Grumpy Opinion
+
+Note I have not worked through message passing completely. My grumpy
+opinion is that the more general field "graphical models" has very
+nice unifying ideas, however when push comes to shove only very
+specific parameterized models can be efficiently computed and you are
+left with various techniques variational, Monte Carlo, ... to take up
+the slack. This is fine as physics has some very nice ways of dealing
+with this (Ising Models, Boltzman machines, ...). But I would rather
+stick with simple models and get nice definable behaviours. In the
+end, we might just put in a deep learning network and get the same
+results anyways... Unless you have very specific information that
+dictates certain dependencies must be properly modeled... Which you
+almost never do in interesting real world problems.
+
+TODO: linear chain models (Markov Field, Conditional Markov Field
+(CRF), HMM, ...) Generative vs discriminative (naive bayes, logistic
+regression; HMM/CRF). Relate to recurrent neural networks.
+
+================================
+# Backward
+
+Above I started with the first symbol and recursively pulled out the
+forward matrix. You can also just as easily start with the last
+symbol, do the same manipulations and derive a the backward
+matrix. $B(s,i)$ gives the probability of state $s$ outputting the $i$
+symbol to the end of the output given $s$.
+
+--- Case $L=1$:
+
+$B(S_1,1) = Theta(S_1,O_1)$
+
+I just output the single symbol in the state with no transistions.
+
+$P(O) = \sum_{S_1} \gamma(S_1) B(S_1,1)$
+
+To get the full probability I sum over ways of starting in each
+initial state and then outputing the single symbol in that state. So
+now $P(O)$ agrees for forward and backward.
+
+Note that many other definitions include a transistion in the backward
+term!  I don't because I relate it to parsing (below).
+
+----- Case symbol $L=2$:
+
+$P(O) = \sum_{S_1} \sum_{S_2} [\gamma(S_1) \Theta(S_1,O_1)] [\Gamma(S_1,S_2) \Theta(S_2,O_2)]$
+
+$P(O) = \sum_{S_1} \gamma(S_1) * \Theta(O_1) \Gamma B(S_2,O_2)]$
+
+$P(O) = \sum_{S_1} \gamma(S_1) * B(S_1,1)$
+
+
+Here $B$ is a $(N,1)$ vector. By right matrix multiply $y = M*x$, the
+$y_k$ component is the dot product of the $k$ row of $M$ with $x$ :
+$y[k] = M[k,:] \cdot x = \sum_z M[k,z] x[z]$. $M[i,j]$ is from $i$ to
+$j$
+
+$B(s1,1) = \sum_{z} \Theta(s1,O_1) \Gamma(s1,z) B(z,2)$. Output first
+symbol from $s1$. For every possible next state $z$: transistion from
+$s1$ to $z$ and output the second symbol in $z$.
+
+- BASE CASE:
+$B(s,L) = \Theta(s, O_L)$
+- RECURSION:
+$B(s,i-1) = \Theta(O_{i-1}) \Gamma B(s,i)$
+
+================================
+# Why compute both forward and backward?
+
+The end probability for the entire output will be the same for forward
+and for backward. This is an invariant that can be asserted.
+
+$B(s,i)$ gives the probability of state $s$ outputting the $i$ symbol
+to the end of the output given $s$. $P(S \rightarrow O[i:L] |
+s)$. Here I use $S$ as the starting nonterminal.
+
+$F(s,i)$ gives the probability of outputting the first to the $i$
+symbol and being in state $s$. $P( S \rightarrow O[1:i], s)$
+
+Define $D(s,i) = B(s,i)*F(s,i)/\Theta(s,i)$ gives the probability of
+outputting the first to the last symbol with state $s$ outputting the
+$i$ symbol. The denominator accounts for the fact that both my forward
+and backward recursions aways outputs a symbol in the state and then
+transistion. The output is double counted when I multiply the terms.
+
+$P(O) = \sum_s D(s,i)$ If you sum over states that output the $i$
+symbol, you get back to the full probability. This is an invaiant that
+can be checked.
+
+This is the posterior decode. It is useful because it can give you a
+sense of how ambiguous the parse is. If for a given $s$, $D(s,i)$ has
+high entropy over $i$ then there are many largely equivalent,
+ambiguous symbols that the state can output. If the distribution has
+low entropy then it is clear that almost all the probability lies on
+that state outputting that single symbol.
+
+It is the probability, or expectation of the indicator variable, of
+that state outputting that symbol. The Baum-Welch algorithm
+(https://en.wikipedia.org/wiki/Baum%E2%80%93Welch_algorithm) uses this
+in EM to estimate parameters. Note you CAN compute gradients and
+follow those (Take the matrix multiply and take a deriviative with
+respect to one of the matrix entries). Gradients also come in with
+Fisher Information Vectors on HMMs.
+
+================================
+# Parsing Regular Languages
+
+I find these manipulations very tricky to keep straight. Plus we have
+not yet introduced complicating factors like silent states that don't
+output any symbols or implicit states!
+
+I find an easier way to think about this is as a regular
+grammar. Computers are good at parsing regular grammars.  Recursive
+descent parsing with memoization computes backwards but the computer
+keeps track of what needs to be computed rather than a human writing
+out a dynamic program and hoping there are no off by one errors! While
+the dynamic program might be more compute / cache efficient, I like to
+check the dynamic programming with the parsing answer.
+
+I see similarities to Tensorflow. The probability of implementing
+backprop has high probability of implementation error. Tensorflow
+takes a description and does everything automatically. Here the parser
+does everything automatically. If the parser could then structure the
+compuation optimally then it would also be very fast. This has been
+done. C4 / Exonerate used this idea but unfortunately had the
+tendenacy to crash (It's not easy!). TODO: resurect C4 in light of
+tensorflow probability..
+
+================================
+# Silent States
+
+The theory above has a one-state <> one-output assumption. However, it
+is very useful to have silent states, for example delete states in
+sequence alignment. What does this do to the theory.
+
+Well computer science does have $NFA-\Lambda$ machines. This is simply
+a nondeterministic finite automata that have states that output
+nothing. You can compute the transitive closure of the set of states
+reachable from a given state using only silent states. You can then
+update the transistion function to eliminate silent states. However,
+this can lead to a blowup in the number of transistions. When dealing
+with probabilistic machines, we also want the probability of
+transistion, not the product of a chain in a transitive closure.
+
+Bioinformatics Needleman–Wunsch algorithm deals with "silent states"
+in sequence alignment by simply keeping track of deletes that consume
+a symbol but don't change state.
+
+HMM implementations step through the DP and simply upate the symbols
+consumed appropriately is silent. Is this is correct thing to do? Is
+there an implicit assumption?
+
+First note that most profile HMMs must make an implicit assumption
+because in arbitrary graphs if there is a null-cycle then either have
+to take a limit and replace it or otherwise the recursion will go on
+forever. Loopy belief propagation deals with these null loops in
+graphical models. HMM codes don't deal with this.
+
+Consider filling out a forward table in an HMM. You look at everywhere
+you could have come from in one step, take those values, add in the
+transistions/outputs, sum/max, and then store. All fine with no silent
+states. With silent states, you increase the states you could have
+come from through the null-transitive closure.
+
+https://www.math.rutgers.edu/images/academics/course_materials/338/chapter8.pdf
