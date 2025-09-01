@@ -375,7 +375,7 @@ Generate 5 state sub-hmm representing Match Branch Stick Delete for one base:
 
         # at end
         if this.name=="last":
-            if (end-begin)>0:
+            if (end-begin)!=0:
                 result = (0.0,-1,0.0)
             else:
                 result = (1.0,-1,1.0)
