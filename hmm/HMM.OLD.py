@@ -2,6 +2,15 @@ import numpy as np
 import math
 
 ################################
+class HMMStateOutput:
+    # HMM state output probabilities. return probability of state outputting given symbols
+
+    #### define for DNA
+    def __init__(self):
+        self.parameters = [0.25, 0.25, 0.25, 0.25
+        
+    
+################################
 class HMMState:
     def __init__(self):
         self.name = "HMMState"
@@ -9,7 +18,7 @@ class HMMState:
         self.out = []   # emisson prob
         self.nexts = [] # next state
         self.nextp = [] # prob of next state
-        self.targetOutput = "A"
+        self.targetOutput = None
         self.prevs = [] # previous state that arrive here
         self.prevp = [] # prob previous state that arrive here
         self.prevComputed=False
@@ -26,139 +35,11 @@ class HMMState:
         tmp.append("prevComputed: %s" % str(self.prevComputed))
         return("\n".join(tmp))
 
-
-################################
-class HMMParameters:
-
-        #### define the transisition and output given the base identity
-        ## Generic probabilities
-        # def ftrans( base ):
-        #     """pm,pb,ps,pd for base ACGT"""
-        #     return( (0.8,0.05,0.05,0.1) )
-        # def foutm( base ):
-        #     tmp = [0.0,0.0,0.0,0.0]
-        #     tmp[ self.alphaToInd[baseIden] ] =1.0
-        #     return(tmp)
-        # def foutb( base ):
-        #     tmp = [0.0,0.0,0.0,0.0]
-        #     tmp[ self.alphaToInd[baseIden] ] =1.0
-        #     return(tmp)
-        # def fouts( base ):
-        #     tmp = [1.0/3.0,1.0/3.0,1.0/3.0,1.0/3.0]
-        #     tmp[ self.alphaToInd[baseIden] ] =0.0
-        #     return(tmp)
-
-        # # nigel's sim parameters
-        # def ftrans( base ):
-        #     """pm,pb,ps,pd for base ACGT"""
-        #     p_m  = 0.95583140484751283
-        #     p_d  = 0.00097238955012494488
-        #     p_b  = 0.029256323818866534
-        #     p_s  = 0.013939881783495679
-        #     return( (p_m,p_b,p_s,p_d) )
-        # def foutm( base ):
-        #     eps  = 0.00505052456472967
-        #     tmp = [eps/3,eps/3,eps/3,eps/3]
-        #     tmp[ self.alphaToInd[baseIden] ] =1.0-eps
-        #     return(tmp)
-        # def foutb( base ):
-        #     tmp = [0.0,0.0,0.0,0.0]
-        #     tmp[ self.alphaToInd[baseIden] ] =1.0
-        #     return(tmp)
-        # def fouts( base ):
-        #     tmp = [1.0/3.0,1.0/3.0,1.0/3.0,1.0/3.0]
-        #     tmp[ self.alphaToInd[baseIden] ] =0.0
-        #     return(tmp)
-
-    @staticmethod
-    def parseDat( holder, data ):
-        for ll in data.splitlines():
-            ff = ll.split()
-            pp = np.array([float(xx) for xx in ff[1:5]])
-            pp = pp/sum(pp) # sum to 1.0 after getting rid of false pseudo-count for "-"
-            holder[ff[0]] = pp
-
-    def __init__(self, mPmfdat=None, bPmfdat=None, sPmfdat=None, transdat=None):
-        #             A           C           G          T           - N CTX
-        if mPmfdat is None:
-            mPmfdat = """AA 9.988101e-01 9.373250e-04 1.403341e-04 7.007589e-05 4.219841e-05 0  AA
-CC 2.146259e-03 9.976724e-01 1.083980e-04 3.663233e-05 3.631252e-05 0  CC
-GG 6.026106e-05 3.617703e-05 9.991735e-01 6.943761e-04 3.570186e-05 0  GG
-TT 1.050065e-04 1.228631e-04 9.038600e-04 9.988269e-01 4.138490e-05 0  TT
-NA 9.991590e-01 6.687298e-04 8.842021e-05 6.981615e-05 1.403361e-05 0  NA
-NC 9.602324e-04 9.981416e-01 6.114106e-05 8.252746e-04 1.176365e-05 0  NC
-NG 5.913309e-04 3.908480e-05 9.977593e-01 1.598439e-03 1.184521e-05 0  NG
-NT 4.828707e-05 9.150200e-05 1.027760e-03 9.988184e-01 1.410018e-05 0  NT
-"""
-        self.mPmf = {}
-        HMMParameters.parseDat(self.mPmf, mPmfdat)
-
-        if bPmfdat is None:
-            bPmfdat = """AA 0.987057271 0.003235682 0.003235682 0.003235682 0.003235682 0  AA
-CC 0.004642770 0.981428920 0.004642770 0.004642770 0.004642770 0  CC
-GG 0.005929860 0.005929860 0.976280560 0.005929860 0.005929860 0  GG
-TT 0.002406837 0.002406837 0.002406837 0.990372650 0.002406837 0  TT
-NA 0.991693486 0.002076628 0.002076628 0.002076628 0.002076628 0  NA
-NC 0.002883788 0.988464849 0.002883788 0.002883788 0.002883788 0  NC
-NG 0.002613835 0.002613835 0.989544660 0.002613835 0.002613835 0  NG
-NT 0.002356228 0.002356228 0.002356228 0.990575089 0.002356228 0  NT
-"""
-        self.bPmf = {}
-        HMMParameters.parseDat(self.bPmf, bPmfdat)
-
-        if sPmfdat is None:
-            sPmfdat = """AA 0.02011942 0.336736109 0.188141521 0.43488353 0.020119421 0  AA
-CC 0.43867758 0.016881951 0.340925420 0.18663310 0.016881951 0  CC
-GG 0.32834646 0.131647516 0.026688865 0.48662830 0.026688865 0  GG
-TT 0.25124307 0.281135027 0.433736630 0.01694264 0.016942636 0  TT
-NA 0.01651072 0.154492514 0.344974992 0.46751106 0.016510719 0  NA
-NC 0.34305431 0.008586935 0.331614465 0.30815736 0.008586935 0  NC
-NG 0.37580837 0.180552820 0.007853463 0.42793189 0.007853463 0  NG
-NT 0.36329025 0.330922178 0.271563220 0.01711218 0.017112177 0  NT
-"""
-        self.sPmf = {}
-        HMMParameters.parseDat(self.sPmf, sPmfdat)
-
-        #  CTX     Match      Branch        Stick       Delete
-        if transdat is None:
-            transdat = """AA 0.9747334 0.012506070 0.0018391528 0.0109214122
-CC 0.9824151 0.007507524 0.0019354064 0.0081419332
-GG 0.9837446 0.005661715 0.0011370914 0.0094566157
-TT 0.9687964 0.016461413 0.0021650551 0.0125771129
-NA 0.9918225 0.006633355 0.0007715309 0.0007726506
-NC 0.9942187 0.003997322 0.0013002356 0.0004837361
-NG 0.9935532 0.004476972 0.0014435620 0.0005262866
-NT 0.9924876 0.005870878 0.0007467905 0.0008947449
-"""
-        self.trans = {}
-        HMMParameters.parseDat(self.trans,transdat)
-
-    def toctx(self, ctx):
-        if ctx[0]==ctx[1]:
-            return(ctx)
-        else:
-            ctx = "N"+ctx[1]
-            return(ctx)
-
-    def ftrans( self, ctx ):
-        return(self.trans[self.toctx(ctx)])
-
-    def foutm( self, ctx ):
-        return(self.mPmf[self.toctx(ctx)])
-
-    def foutb( self, ctx ):
-        return(self.bPmf[self.toctx(ctx)])
-
-    def fouts( self, ctx ):
-        return(self.sPmf[self.toctx(ctx)])
-
-
 ################################        
 class HMM:
     def __init__( self ):
         self.state = []
         self.nameToStateIndex = {}
-        self.alphabet = "ACGT"
         self.alphaToInd = {"A":0, "C":1, "G":2, "T":3}
         self.memo = {}
         self.memoForward = {}

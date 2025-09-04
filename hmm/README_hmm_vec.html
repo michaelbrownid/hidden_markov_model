@@ -1,0 +1,99 @@
+<pre>
+
+goal: develop the HMM_VEC that outputs vectors
+
+Use JSON for flexibility for model and data.
+
+================================
+
+GOAL: input output for model
+
+python3 HMM_VEC.py hmm_twoState.json > hmm_twoState.json.2
+python3 HMM_VEC.py hmm_twoState.json.2 > hmm_twoState.json.3
+
+RESULT: model outputs are equal (to whitespace and format). Success
+read and write model
+
+================================
+
+GOAL: Generate sequences
+
+python3 HMM_VEC.py hmm_twoState.json
+
+================================
+# trans START to RBS_1 ch 1 transNlp 1.6094379124341003 myprod 1.6094379124341003
+[1.7227290645782272, 9.6281746805745, 2.5780708201889415] #output RBS_1 RBS_1_out output nlp 10.080044521816223
+# trans RBS_1 to LAST ch 0 transNlp 0.35667494393873245 myprod 12.046157378189054
+================================
+
+================================
+# trans START to RBS_0 ch 0 transNlp 0.2231435513142097 myprod 0.2231435513142097
+[4.646171244224378, 14.192288084757397, -5.125682448172035] #output RBS_0 RBS_0_out output nlp 10.713538281213484
+# trans RBS_0 to RBS_1 ch 0 transNlp 0.10536051565782628 myprod 11.04204234818552
+[3.9562986091356382, -3.58032710523456, 1.1519482714250833] #output RBS_1 RBS_1_out output nlp 9.085166314012998
+# trans RBS_1 to RBS_1 ch 1 transNlp 1.8971199848858813 myprod 22.024328647084403
+[11.601563806886249, -0.1674997487149723, 7.8549890532948] #output RBS_1 RBS_1_out output nlp 9.715498800402884
+# trans RBS_1 to LAST ch 0 transNlp 0.35667494393873245 myprod 32.09650239142602
+================================
+
+----
+Some nlp are negative because probability>1.0 for gaussians with sd<1.0:
+				     
+[3.644869388177284, -1.9082658836674868, 3.9503247965111727] #output RBS_1 RBS_1_out output nlp -0.3558946080446157
+    {
+	"type": "HMMStateOutputMVN",
+	"name": "RBS_1_out",
+	"mean": [ 3, -2, 4 ],
+	"sd": [ 0.75, 0.35, 0.1 ]
+    },
+
+probs = c(dnorm( 3.64, 3, 0.75),
+dnorm( -1.91, -2, 0.35),
+dnorm( 3.95, 4, 0.1 ))
+
+probs
+[1] 0.3695958 1.1027669 3.5206533
+
+-log(probs)
+[1]  0.99534535 -0.09782237 -1.25864656
+
+sum(-log(probs))
+[1] -0.3611236
+
+xx = seq(2,6,len=128)
+yy= dnorm(xx,4,0.1)
+plot(xx,yy)
+sum(yy)
+[1] 31.75
+
+1/diff(xx)[1]
+[1] 31.75
+
+RESULT: for variance less than 1, the density is greater than 1 as
+expected.
+
+================================
+Viterbi Parse
+
+python3 HMM_VEC.py hmm_twoState.json
+
+data.listDataSeq() ['RB_video_0']
+exploring START 0 2
+exploring RBS_0 0 2
+exploring RBS_1 1 2
+exploring RBS_1 2 2
+exploring RBS_0 2 2
+exploring RBS_0 1 2
+exploring RBS_1 0 2
+result (19.34489011416045, 0, 'RBS_0', -0.0, 0.2231435513142097, 19.309177629418592)
+viterbiPath
+targetOutputSeq	thisstate	begin	end	localLen	dataNames	nextstate	localNlpOut	localNlpTrans	viterbiprob	sumprob
+RB_video_0	START	0	2	0	RB_0_S_0	RBS_0	-0.0	0.2231435513142097	19.34489011416045	19.309177629418592
+RB_video_0	RBS_0	0	2	1	RB_0_S_0	RBS_1	9.664570878596155	0.10536051565782628	19.12174656284624	19.120575033866622
+RB_video_0	RBS_1	1	2	1	RB_0_S_1	LAST	8.995140224653525	0.35667494393873245	9.351815168592257	9.351815168592257
+
+RESULT: This is the viterbi parse of hmm_data.json under the hmm
+hmm_twoState.json. I can estimate the transistions and the output
+distributions from this summary.
+
+================================

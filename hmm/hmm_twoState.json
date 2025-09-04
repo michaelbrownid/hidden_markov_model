@@ -1,0 +1,32 @@
+[
+    {
+	"type": "HMMStateOutputMVN",
+	"name": "RBS_0_out",
+	"mean": [ -4, 3, -2 ],
+	"sd": [10,10,10 ]
+    },
+    {
+	"type": "HMMStateOutputMVN",
+	"name": "RBS_1_out",
+	"mean": [ 3, -2, 4 ],
+	"sd": [ 8,8,8 ]
+    },
+    {
+	"type": "HMMState",
+	"name": "RBS_0",
+	"next": [ ["RBS_1",0.9], ["RBS_0",0.05 ], ["LAST",0.05 ]],
+	"probOut": "RBS_0_out"
+    },
+    {
+	"type": "HMMState",
+	"name": "RBS_1",
+	"next": [ ["LAST", 0.7], ["RBS_1",0.15], ["RBS_0",0.15 ] ],
+	"probOut": "RBS_1_out"
+    },
+    {
+	"type": "HMMState",
+	"name": "START",
+	"next": [ ["RBS_0",0.8], ["RBS_1",0.2] ],
+	"probOut": "SILENT"
+    }
+]

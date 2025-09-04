@@ -1,0 +1,19 @@
+[
+{
+    "type": "DataPoint",
+    "name": "RB_0_S_0",
+    "data": [ -4, 3, -2 ]
+}
+,
+{
+    "type": "DataPoint",
+    "name": "RB_0_S_1",
+    "data": [ 3, -2, 4 ]
+}
+,
+{
+    "type": "DataSeq",
+    "name": "RB_video_0",
+    "data": [ "RB_0_S_0", "RB_0_S_1" ]
+}
+]
