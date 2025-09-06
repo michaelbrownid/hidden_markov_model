@@ -4,7 +4,7 @@ import argparse
 import copy
 import json
 import sys
-import HMM_DAT
+from . import HMM_DAT
 
 ################################
 # Conventions
@@ -236,7 +236,7 @@ class HMM:
             here = herest.nexts[ch]
 
     ################################
-    def backward( self, thisstate, begin, end):
+    def backward( self, thisstate, begin=None, end=None):
 
         """returns the (backward Vierbi probability, best choice,
            summed all paths prob) of this state deriving [begin:end)
@@ -246,6 +246,10 @@ class HMM:
            regular grammars.
 
         """
+
+        #### fill in boundaries on first call
+        if begin is None: begin=0
+        if end is None: end=len(self.targetOutputNames)
 
         if self.key(thisstate,begin,end) in self.memo:
             return self.memo[self.key(thisstate,begin,end)]
@@ -312,9 +316,12 @@ class HMM:
         return(overallresult)
 
     ################################
-    def backwardAlign( self, thisstate, begin, end):
+    def backwardAlign( self, thisstate, begin=None, end=None):
         """Output the Viterbi path once backward has been computed"""
-        
+        #### fill in boundaries on first call
+        if begin is None: begin=0
+        if end is None: end=len(self.targetOutputNames)
+
         statepath = {}
         statepath["keys"]=["targetOutputSeq","thisstate","begin","end","localLen","dataNames","nextstate","localNlpOut","localNlpTrans","viterbiprob","sumprob"]
         statepath["values"] = []
@@ -434,16 +441,16 @@ def main():
 
     if True:
         # get some data and run forward
-        data = HMM_DAT.Data( "hmm_data.json")
+        data = HMM_DAT.Data( sys.argv[2])
         print("data.listDataSeq()",data.listDataSeq())
 
-        myhmm.targetOutputSeq = "RB_video_0"
+        myhmm.targetOutputSeq = "RB_06"
         (myhmm.targetOutputNames, myhmm.targetOutput) = data.dataSeqMatrixFromName(myhmm.targetOutputSeq )
 
-        result = myhmm.backward("START",0,2)
+        result = myhmm.backward("START")
         print("result",result)
 
-        viterbiPath = myhmm.backwardAlign("START",0,2)
+        viterbiPath = myhmm.backwardAlign("START")
         print("viterbiPath")
         print("\t".join(viterbiPath["keys"]))
         for vv in viterbiPath["values"]:
