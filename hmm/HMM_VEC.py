@@ -71,8 +71,8 @@ class HMMStateOutputMVN:
         self.name = None
         self.mean = None
         self.sd = None
-        self.countData = [] # list of datapoints emitted by this state
-        self.countPosterior  = [] # corresponding emission posteriors. 1.0 for viterbi
+        self.countsData = [] # list of datapoints emitted by this state
+        self.countsPosterior  = [] # corresponding emission posteriors. 1.0 for viterbi
         self.readJSON( json )
 
     def nlp( self, output ):
@@ -103,8 +103,8 @@ class HMMStateOutputMVN:
         #### silence large parameters for now
         #tmp.append('"mean":  %s' % json.dumps(self.mean))
         #tmp.append('"sd":  %s' % json.dumps(self.sd))
-        tmp.append('"countData": "%s"' % self.countData)
-        tmp.append('"countPosterior": "%s"' % self.countPosterior)
+        tmp.append('"countsData": "%s"' % self.countsData)
+        tmp.append('"countsPosterior": "%s"' % self.countsPosterior)
         return('{\n%s\n}\n' % ",\n".join(tmp))
 
     def readJSON(self, json):
@@ -145,7 +145,6 @@ class HMMState:
         tmp.append('"counts": "%s"' % self.counts)
         #### sum counts
         npc = np.array(self.counts)
-        print("npc.shape",npc.shape)
         tmp.append('"sumCounts": "%s"' % np.sum(npc,axis=0))
         return('{\n%s\n}\n' % ",\n".join(tmp))
 
@@ -339,13 +338,23 @@ class HMM:
 
     ################################
     def backwardAlign( self, thisstate, begin=None, end=None):
-        """Output the Viterbi path once backward has been computed"""
+        """Output the Viterbi path once backward has been computed
+        targetOutputSeq	thisstate	begin	end	localLen	dataNames	nextstate	localNlpOut	localNlpTrans	viterbiprob	sumprob
+        RB_06	START	0	98	0	RB_06_S_0	RBS_4	-0.0	1.9427172517811961	-285430.5573645353	-285430.5573645353
+        RB_06	RBS_4	0	98	1	RB_06_S_0	RBS_4	-3029.747402596579	1.96574149676392	-285432.50008178706	-285432.50008178706
+        ...
+        RB_06	RBS_0	95	98	1	RB_06_S_95	RBS_0	-3033.725616082737	1.9475645167672397	-8724.258364931258	-8724.258364931258
+        RB_06	RBS_0	96	98	1	RB_06_S_96	RBS_1	-2787.045761956062	1.9363945661566904	-5692.480313365288	-5692.480313365288
+        RB_06	RBS_1	97	98	1	RB_06_S_97	LAST	-2909.3023261969533	1.9313802215709954	-2907.3709459753823	-2907.3709459753823
+        """
+        
         #### fill in boundaries on first call
         if begin is None: begin=0
         if end is None: end=len(self.targetOutputNames)
 
         statepath = {}
         statepath["keys"]=["targetOutputSeq","thisstate","begin","end","localLen","dataNames","nextstate","localNlpOut","localNlpTrans","viterbiprob","sumprob"]
+        statepath["key2Idx"] = dict( (name, idx) for (idx, name) in enumerate(statepath["keys"]) )
         statepath["values"] = []
         
         while thisstate!="LAST":
@@ -357,7 +366,64 @@ class HMM:
             thisstate = viterbichoice
 
         return(statepath)
-    
+
+    ################################
+    def clearCounts( self ):
+        # cycle through all hmm states and clear counts
+
+        for ii in self.typeToIndex["HMMState"]:
+            self.model[ii].counts = []
+
+        for ii in self.typeToIndex["HMMStateOutputMVN"]:
+            self.model[ii].countsData = []
+            self.model[ii].countsPosterior = []
+
+    ################################
+    def addCountsFromViterbi( self, viterbiPath ):
+        # Given viterbiPath fill out counts for transistions and emissions
+        
+        for vv in viterbiPath["values"]:
+            #### have viterbi path transistioning from thisstate to nextstate with emission
+            thisstate=vv[ viterbiPath["key2Idx"]["thisstate"] ]
+            nextstate=vv[ viterbiPath["key2Idx"]["nextstate"] ]
+            emission=vv[ viterbiPath["key2Idx"]["dataNames"] ]
+            print("viterbi transistion emission", thisstate,nextstate, emission)
+
+            hmmthisstate = self.name2state(thisstate)
+            nextIdx = hmmthisstate.nextName2Idx[nextstate]
+            counts = [0.0]*len(hmmthisstate.nexts)
+            counts[nextIdx] = 1.0
+            hmmthisstate.counts.append(counts)
+
+            if hmmthisstate.probOut != "SILENT":
+                outputthisstate = self.name2state( hmmthisstate.probOut )
+                outputthisstate.countsData.append( emission )
+                outputthisstate.countsPosterior.append( 1.0  )
+                
+    ################################
+    def estimateModelFromCounts( self ):
+        # estimate model from counts
+
+        #### HMMState
+        for ii in self.typeToIndex["HMMState"]:
+            state = self.model[ii]
+
+            ## add prior
+            state.counts.append([1.0]*len(state.nexts))
+
+            print("estimateModelFromCounts_counts", state.name, state.counts)
+            ## sum counts
+            npc = np.array(state.counts)
+            sumCounts = np.sum(npc,axis=0)
+            print("estimateModelFromCounts_sumCounts", sumCounts)
+            probs = sumCounts/np.sum(sumCounts)
+            print("estimateModelFromCounts_probs", probs)
+            state.nextp = [ nl( xx ) for xx in probs ]
+
+        for ii in self.typeToIndex["HMMStateOutputMVN"]:
+            state = self.model[ii]
+            print("estimateModelFromCounts_countsData", state.name, state.countsData)
+
     ################################
     def computePrev( self, thisstate ):
 
@@ -816,38 +882,13 @@ def main():
         for vv in viterbiPath["values"]:
             print("\t".join([str(xx) for xx in vv]))
 
-        """
-targetOutputSeq	thisstate	begin	end	localLen	dataNames	nextstate	localNlpOut	localNlpTrans	viterbiprob	sumprob
-RB_06	START	0	98	0	RB_06_S_0	RBS_4	-0.0	1.9427172517811961	-285430.5573645353	-285430.5573645353
-RB_06	RBS_4	0	98	1	RB_06_S_0	RBS_4	-3029.747402596579	1.96574149676392	-285432.50008178706	-285432.50008178706
-...
-RB_06	RBS_0	95	98	1	RB_06_S_95	RBS_0	-3033.725616082737	1.9475645167672397	-8724.258364931258	-8724.258364931258
-RB_06	RBS_0	96	98	1	RB_06_S_96	RBS_1	-2787.045761956062	1.9363945661566904	-5692.480313365288	-5692.480313365288
-RB_06	RBS_1	97	98	1	RB_06_S_97	LAST	-2909.3023261969533	1.9313802215709954	-2907.3709459753823	-2907.3709459753823
-        """
-        
-        #### fill out transistion counts
-        for vv in viterbiPath["values"]:
-            #### have viterbi path transistioning from thisstate to nextstate with emission
-            thisstate=vv[1]
-            nextstate=vv[6]
-            emission = vv[5]
-            print("viterbi transistion emission", thisstate,nextstate, emission)
+        myhmm.clearCounts()
+        myhmm.addCountsFromViterbi( viterbiPath )
 
-            hmmthisstate = myhmm.name2state(thisstate)
-
-            nextIdx = hmmthisstate.nextName2Idx[nextstate]
-            counts = [0.0]*len(hmmthisstate.nexts)
-            counts[nextIdx] = 1.0
-            hmmthisstate.counts.append(counts)
-
-            if hmmthisstate.probOut != "SILENT":
-                outputthisstate = myhmm.name2state( hmmthisstate.probOut )
-                outputthisstate.countData.append( emission )
-                outputthisstate.countPosterior.append( 1.0  )
-
-        print("model with counts")
+        myhmm.estimateModelFromCounts()
+        print("model estimated")
         print(myhmm)
+        
         
     if False:
         myhmm = HMM()
