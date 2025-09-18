@@ -71,6 +71,8 @@ class HMMStateOutputMVN:
         self.name = None
         self.mean = None
         self.sd = None
+        self.countData = [] # list of datapoints emitted by this state
+        self.countPosterior  = [] # corresponding emission posteriors. 1.0 for viterbi
         self.readJSON( json )
 
     def nlp( self, output ):
@@ -98,8 +100,11 @@ class HMMStateOutputMVN:
         tmp=[]
         tmp.append('"type": "HMMStateOutputMVN"')
         tmp.append('"name": "%s"' % self.name)
-        tmp.append('"mean":  %s' % json.dumps(self.mean))
-        tmp.append('"sd":  %s' % json.dumps(self.sd))
+        #### silence large parameters for now
+        #tmp.append('"mean":  %s' % json.dumps(self.mean))
+        #tmp.append('"sd":  %s' % json.dumps(self.sd))
+        tmp.append('"countData": "%s"' % self.countData)
+        tmp.append('"countPosterior": "%s"' % self.countPosterior)
         return('{\n%s\n}\n' % ",\n".join(tmp))
 
     def readJSON(self, json):
@@ -114,10 +119,18 @@ class HMMState:
         self.name = None
         self.nexts = [] # next state
         self.nextp = [] # nl prob of next state
+        self.nextName2Idx = {} # state name to index in next
         self.prevs = [] # previous state that arrive here
         self.prevp = [] # nl prob previous state that arrive here
+        self.prevName2Idx = {} # state name to index in prev
         self.prevComputed=False
         self.probOut = None
+
+        # counts 2d [numPoints, len(self.nexts)]. For every point,
+        # where it transistioned. Might be delta function for Viterbi
+        # [0,1,0] or distribution for posterior [0.2, 0.7, 0.1]
+        self.counts = [] 
+
         self.readJSON( json )
         
     def __str__(self):
@@ -129,6 +142,11 @@ class HMMState:
             tmpnext.append('["%s", %f]' % (self.nexts[ii], probFromNlp( self.nextp[ii] ) ))
         tmp.append('"next": [ %s ]' % ",".join(tmpnext))
         tmp.append('"probOut": "%s"' % self.probOut)
+        tmp.append('"counts": "%s"' % self.counts)
+        #### sum counts
+        npc = np.array(self.counts)
+        print("npc.shape",npc.shape)
+        tmp.append('"sumCounts": "%s"' % np.sum(npc,axis=0))
         return('{\n%s\n}\n' % ",\n".join(tmp))
 
 
@@ -138,6 +156,7 @@ class HMMState:
         for (nexts, nextp) in json["next"]:
             self.nexts.append(nexts)
             self.nextp.append(nl(nextp))
+            self.nextName2Idx[nexts] = len(self.nexts)-1 # index
         self.probOut = json["probOut"]
 
         
@@ -780,7 +799,7 @@ def main():
         myhmm.generate()
         print("================================")
 
-    if False:
+    if True:
         # get some data and run forward
         data = HMM_DAT.Data( sys.argv[2])
         print("data.listDataSeq()",data.listDataSeq())
@@ -797,7 +816,40 @@ def main():
         for vv in viterbiPath["values"]:
             print("\t".join([str(xx) for xx in vv]))
 
-    if True:
+        """
+targetOutputSeq	thisstate	begin	end	localLen	dataNames	nextstate	localNlpOut	localNlpTrans	viterbiprob	sumprob
+RB_06	START	0	98	0	RB_06_S_0	RBS_4	-0.0	1.9427172517811961	-285430.5573645353	-285430.5573645353
+RB_06	RBS_4	0	98	1	RB_06_S_0	RBS_4	-3029.747402596579	1.96574149676392	-285432.50008178706	-285432.50008178706
+...
+RB_06	RBS_0	95	98	1	RB_06_S_95	RBS_0	-3033.725616082737	1.9475645167672397	-8724.258364931258	-8724.258364931258
+RB_06	RBS_0	96	98	1	RB_06_S_96	RBS_1	-2787.045761956062	1.9363945661566904	-5692.480313365288	-5692.480313365288
+RB_06	RBS_1	97	98	1	RB_06_S_97	LAST	-2909.3023261969533	1.9313802215709954	-2907.3709459753823	-2907.3709459753823
+        """
+        
+        #### fill out transistion counts
+        for vv in viterbiPath["values"]:
+            #### have viterbi path transistioning from thisstate to nextstate with emission
+            thisstate=vv[1]
+            nextstate=vv[6]
+            emission = vv[5]
+            print("viterbi transistion emission", thisstate,nextstate, emission)
+
+            hmmthisstate = myhmm.name2state(thisstate)
+
+            nextIdx = hmmthisstate.nextName2Idx[nextstate]
+            counts = [0.0]*len(hmmthisstate.nexts)
+            counts[nextIdx] = 1.0
+            hmmthisstate.counts.append(counts)
+
+            if hmmthisstate.probOut != "SILENT":
+                outputthisstate = myhmm.name2state( hmmthisstate.probOut )
+                outputthisstate.countData.append( emission )
+                outputthisstate.countPosterior.append( 1.0  )
+
+        print("model with counts")
+        print(myhmm)
+        
+    if False:
         myhmm = HMM()
         myhmm.readJSON("/media/datastore/storestudio/workspace2022/hidden-markov-model/hmm/hmm_twoState.json")
 
