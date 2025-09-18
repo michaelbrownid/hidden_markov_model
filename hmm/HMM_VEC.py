@@ -101,8 +101,10 @@ class HMMStateOutputMVN:
         tmp.append('"type": "HMMStateOutputMVN"')
         tmp.append('"name": "%s"' % self.name)
         #### silence large parameters for now
-        #tmp.append('"mean":  %s' % json.dumps(self.mean))
-        #tmp.append('"sd":  %s' % json.dumps(self.sd))
+        short=False
+        if not short:
+            tmp.append('"mean":  %s' % json.dumps(self.mean))
+            tmp.append('"sd":  %s' % json.dumps(self.sd))
         tmp.append('"countsData": "%s"' % self.countsData)
         tmp.append('"countsPosterior": "%s"' % self.countsPosterior)
         return('{\n%s\n}\n' % ",\n".join(tmp))
@@ -178,6 +180,7 @@ class HMM:
         self.memoForward = {}
         self.targetOutput = None
         self.targetOutputNames = None
+        self.targetOutputName2Idx = None
         self.band = 256 # abs(thisstate-begin) cannot be larger than self.band
 
     ################################        
@@ -414,6 +417,8 @@ class HMM:
             print("estimateModelFromCounts_counts", state.name, state.counts)
             ## sum counts
             npc = np.array(state.counts)
+
+            # TODO: change to online for loop
             sumCounts = np.sum(npc,axis=0)
             print("estimateModelFromCounts_sumCounts", sumCounts)
             probs = sumCounts/np.sum(sumCounts)
@@ -424,6 +429,48 @@ class HMM:
             state = self.model[ii]
             print("estimateModelFromCounts_countsData", state.name, state.countsData)
 
+            """ Updates are like mixtures of Guassians. There data
+            points are weighted by their posterior probability
+            $w_i$. $E[D] = mean = (\sum w_i * d_i) / (\sum w_i)$, a
+            generalization of standard $w_i=1/N$. $variance = (\sum
+            w_i * (d_i - mean)^2) / (\sum w_i)$. Also $variance =
+            E[D^2]-E^2[D]$, $E[D^2] = (\sum w_i * d_i*d_i) / (\sum
+            w_i)$. So I can keep track of all data and weights, or the
+            weighted sums, sums of squares, and sum of weights for
+            sufficient statistics."""
+
+            ### No prior on mean. But prior on SD of 1.0 everywhere.
+
+            #### cycle through coutsData and countsPosterior summing up weighted data and weights
+            datasum = 0.0*np.array( self.targetOutput[0] ) # zeros same size at data
+            weightsum = 0.0
+            for ii in range(len(state.countsData)):
+                dataname = state.countsData[ii]
+                dataPost = state.countsPosterior[ii]
+                dataIdx = self.targetOutputName2Idx[dataname]
+                data = np.array(self.targetOutput[dataIdx])
+                #print("MVG update", dataname, dataPost,dataIdx,self.targetOutputNames[dataIdx])
+                assert(dataname == self.targetOutputNames[dataIdx])
+                datasum += dataPost*data
+                weightsum += dataPost
+            meanEst = datasum/weightsum
+            print("meanEst",meanEst)
+            varsum = 0.001+0.0*np.array( self.targetOutput[0] ) # ones same size at data, prior
+            weightsum = 0.0
+            for ii in range(len(state.countsData)):
+                dataname = state.countsData[ii]
+                dataPost = state.countsPosterior[ii]
+                dataIdx = self.targetOutputName2Idx[dataname]
+                data = np.array(self.targetOutput[dataIdx])
+                #print("MVG update var", dataname, dataPost,dataIdx,self.targetOutputNames[dataIdx])
+                assert(dataname == self.targetOutputNames[dataIdx])
+                varsum += dataPost*(data-meanEst)*(data-meanEst)
+                weightsum += dataPost
+            sdEst = np.sqrt( varsum/weightsum)
+            print("sdEst",sdEst)
+            state.mean = meanEst.tolist() # tolist for json output
+            state.sd = sdEst.tolist() # tolist for json output
+            
     ################################
     def computePrev( self, thisstate ):
 
@@ -871,7 +918,7 @@ def main():
         print("data.listDataSeq()",data.listDataSeq())
 
         myhmm.targetOutputSeq = "RB_06" # "RB_video_0"
-        (myhmm.targetOutputNames, myhmm.targetOutput) = data.dataSeqMatrixFromName(myhmm.targetOutputSeq )
+        (myhmm.targetOutputNames, myhmm.targetOutput, myhmm.targetOutputName2Idx) = data.dataSeqMatrixFromName(myhmm.targetOutputSeq )
 
         result = myhmm.backward("START")
         print("result",result)
@@ -887,7 +934,9 @@ def main():
 
         myhmm.estimateModelFromCounts()
         print("model estimated")
-        print(myhmm)
+        ofp = open("NEWMODEL.json","w")
+        print(myhmm,file=ofp)
+        ofp.close()
         
         
     if False:

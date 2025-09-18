@@ -98,5 +98,6 @@ class Data:
         for datapointname in self.json[self.nameToIndex[myname]]["data"]:
             dataNames.append(datapointname)
             data.append( self.json[ self.nameToIndex[ datapointname ] ]["data"] )
-        return((dataNames,data))
+        name2Idx = dict( (name,idx) for (idx,name) in enumerate(dataNames) )
+        return((dataNames,data,name2Idx))
 
