@@ -73,6 +73,9 @@ class HMMStateOutputMVN:
         self.sd = None
         self.countsData = [] # list of datapoints emitted by this state
         self.countsPosterior  = [] # corresponding emission posteriors. 1.0 for viterbi
+        self.sums = None # Sum of counts
+        self.sumofsqs = None # Sum of square counts
+        self.sumofweights = None # Sum of weights
         self.readJSON( json )
 
     def nlp( self, output ):
@@ -105,8 +108,9 @@ class HMMStateOutputMVN:
         if not short:
             tmp.append('"mean":  %s' % json.dumps(self.mean))
             tmp.append('"sd":  %s' % json.dumps(self.sd))
-        tmp.append('"countsData": "%s"' % self.countsData)
-        tmp.append('"countsPosterior": "%s"' % self.countsPosterior)
+        #tmp.append('"countsData": "%s"' % self.countsData)
+        #tmp.append('"countsPosterior": "%s"' % self.countsPosterior)
+        tmp.append('"sumCountsPosterior": "%s"' % sum(self.countsPosterior))
         return('{\n%s\n}\n' % ",\n".join(tmp))
 
     def readJSON(self, json):
@@ -144,10 +148,11 @@ class HMMState:
             tmpnext.append('["%s", %f]' % (self.nexts[ii], probFromNlp( self.nextp[ii] ) ))
         tmp.append('"next": [ %s ]' % ",".join(tmpnext))
         tmp.append('"probOut": "%s"' % self.probOut)
-        tmp.append('"counts": "%s"' % self.counts)
+        #tmp.append('"counts": "%s"' % self.counts)
         #### sum counts
         npc = np.array(self.counts)
         tmp.append('"sumCounts": "%s"' % np.sum(npc,axis=0))
+        tmp.append('"sumsumCounts": "%s"' % np.sum(np.sum(npc,axis=0)))
         return('{\n%s\n}\n' % ",\n".join(tmp))
 
 
@@ -380,6 +385,28 @@ class HMM:
         for ii in self.typeToIndex["HMMStateOutputMVN"]:
             self.model[ii].countsData = []
             self.model[ii].countsPosterior = []
+            self.model[ii].sums = None # 0.0*np.array( self.targetOutput[0] ) # Sum of counts
+            self.model[ii].sumofsqs = None # 0.001+0.0*np.array( self.targetOutput[0] ) # Sum of square counts. small prior on variance
+            self.model[ii].sumofweights = None # 0.001 # Sum of weights
+
+    ################################
+    def clearMemo( self ):
+        self.memo={}
+        self.memoForward={}
+
+    ################################
+    def diffmax( self, other ):
+        # cycle through all hmm states and calculate parameter differences to other
+
+        for ii in self.typeToIndex["HMMState"]:
+            diffs = np.abs( np.array([probFromNlp(xx) for xx in self.model[ii].nextp]) - np.array([probFromNlp(xx) for xx in other.model[ii].nextp]) )
+            print("diffmax HMMState",ii,np.max(diffs))
+
+        for ii in self.typeToIndex["HMMStateOutputMVN"]:
+            diffs = np.abs( np.array(self.model[ii].mean) - np.array(other.model[ii].mean) )
+            print("diffmax mean HMMStateOutputMVN",ii,np.max(diffs))
+            diffs = np.abs( np.array(self.model[ii].sd) - np.array(other.model[ii].sd) )
+            print("diffmax sd HMMStateOutputMVN",ii,np.max(diffs))
 
     ################################
     def addCountsFromViterbi( self, viterbiPath ):
@@ -390,7 +417,7 @@ class HMM:
             thisstate=vv[ viterbiPath["key2Idx"]["thisstate"] ]
             nextstate=vv[ viterbiPath["key2Idx"]["nextstate"] ]
             emission=vv[ viterbiPath["key2Idx"]["dataNames"] ]
-            print("viterbi transistion emission", thisstate,nextstate, emission)
+            # print("viterbi transistion emission", thisstate,nextstate, emission)
 
             hmmthisstate = self.name2state(thisstate)
             nextIdx = hmmthisstate.nextName2Idx[nextstate]
@@ -400,8 +427,20 @@ class HMM:
 
             if hmmthisstate.probOut != "SILENT":
                 outputthisstate = self.name2state( hmmthisstate.probOut )
+
+                #### handle first time after data was set to get dimension
+                if outputthisstate.sums is None:
+                    outputthisstate.sums = 0.0*np.array( self.targetOutput[0] ) # Sum of counts
+                    outputthisstate.sumofsqs = 0.001+0.0*np.array( self.targetOutput[0] ) # Sum of square counts. small prior on variance
+                    outputthisstate.sumofweights = 1.0 # Sum of weights. One count of 0.001
+
                 outputthisstate.countsData.append( emission )
-                outputthisstate.countsPosterior.append( 1.0  )
+                weight = 1.0
+                outputthisstate.countsPosterior.append( weight )
+                datapoint = np.array( self.targetOutput[ self.targetOutputName2Idx[ emission ] ] )
+                outputthisstate.sums += weight*datapoint
+                outputthisstate.sumofsqs += weight*datapoint*datapoint
+                outputthisstate.sumofweights += weight
                 
     ################################
     def estimateModelFromCounts( self ):
@@ -411,25 +450,32 @@ class HMM:
         for ii in self.typeToIndex["HMMState"]:
             state = self.model[ii]
 
+            # do NO training if no data (never visited in viterbi path
+            if len(state.counts)<1:
+                print("NOTrain!",state.name)
+                continue
+
             ## add prior
             state.counts.append([1.0]*len(state.nexts))
 
-            print("estimateModelFromCounts_counts", state.name, state.counts)
+            #print("estimateModelFromCounts_counts", state.name, state.counts)
+            
             ## sum counts
             npc = np.array(state.counts)
 
             # TODO: change to online for loop
             sumCounts = np.sum(npc,axis=0)
-            print("estimateModelFromCounts_sumCounts", sumCounts)
+            print("estimateModelFromCounts_sumCounts", state.name, sumCounts)
+            
             probs = sumCounts/np.sum(sumCounts)
             print("estimateModelFromCounts_probs", probs)
             state.nextp = [ nl( xx ) for xx in probs ]
 
         for ii in self.typeToIndex["HMMStateOutputMVN"]:
             state = self.model[ii]
-            print("estimateModelFromCounts_countsData", state.name, state.countsData)
+            #print("estimateModelFromCounts_countsData", state.name, state.countsData)
 
-            """ Updates are like mixtures of Guassians. There data
+            r""" Updates are like mixtures of Guassians. There data
             points are weighted by their posterior probability
             $w_i$. $E[D] = mean = (\sum w_i * d_i) / (\sum w_i)$, a
             generalization of standard $w_i=1/N$. $variance = (\sum
@@ -441,32 +487,15 @@ class HMM:
 
             ### No prior on mean. But prior on SD of 1.0 everywhere.
 
+            # do NO training if no data (never visited in viterbi path
+            if len(state.countsData)<1:
+                print("NOTrain!",state.name)
+                continue
+            
             #### cycle through coutsData and countsPosterior summing up weighted data and weights
-            datasum = 0.0*np.array( self.targetOutput[0] ) # zeros same size at data
-            weightsum = 0.0
-            for ii in range(len(state.countsData)):
-                dataname = state.countsData[ii]
-                dataPost = state.countsPosterior[ii]
-                dataIdx = self.targetOutputName2Idx[dataname]
-                data = np.array(self.targetOutput[dataIdx])
-                #print("MVG update", dataname, dataPost,dataIdx,self.targetOutputNames[dataIdx])
-                assert(dataname == self.targetOutputNames[dataIdx])
-                datasum += dataPost*data
-                weightsum += dataPost
-            meanEst = datasum/weightsum
+            meanEst = state.sums / state.sumofweights
             print("meanEst",meanEst)
-            varsum = 0.001+0.0*np.array( self.targetOutput[0] ) # ones same size at data, prior
-            weightsum = 0.0
-            for ii in range(len(state.countsData)):
-                dataname = state.countsData[ii]
-                dataPost = state.countsPosterior[ii]
-                dataIdx = self.targetOutputName2Idx[dataname]
-                data = np.array(self.targetOutput[dataIdx])
-                #print("MVG update var", dataname, dataPost,dataIdx,self.targetOutputNames[dataIdx])
-                assert(dataname == self.targetOutputNames[dataIdx])
-                varsum += dataPost*(data-meanEst)*(data-meanEst)
-                weightsum += dataPost
-            sdEst = np.sqrt( varsum/weightsum)
+            sdEst = np.sqrt( (state.sumofsqs/state.sumofweights) - meanEst*meanEst )
             print("sdEst",sdEst)
             state.mean = meanEst.tolist() # tolist for json output
             state.sd = sdEst.tolist() # tolist for json output
@@ -915,13 +944,16 @@ def main():
     if True:
         # get some data and run forward
         data = HMM_DAT.Data( sys.argv[2])
-        print("data.listDataSeq()",data.listDataSeq())
 
-        myhmm.targetOutputSeq = "RB_06" # "RB_video_0"
+        dl = data.listDataSeq()
+        print("data.listDataSeq()",dl)
+
+        myhmm.targetOutputSeq = dl[0] # "RB_06" # "RB_video_0"
         (myhmm.targetOutputNames, myhmm.targetOutput, myhmm.targetOutputName2Idx) = data.dataSeqMatrixFromName(myhmm.targetOutputSeq )
 
         result = myhmm.backward("START")
-        print("result",result)
+        nlpPerSymbol = result[0]/len(myhmm.targetOutputSeq)
+        print("result",myhmm.targetOutputSeq,result, "nlpPerSymbol", nlpPerSymbol, "length", len(myhmm.targetOutputSeq))
 
         viterbiPath = myhmm.backwardAlign("START")
         print("viterbiPath")
@@ -951,7 +983,7 @@ def main():
         (myhmm.targetOutputNames, myhmm.targetOutput) = data.dataSeqMatrixFromName(myhmm.targetOutputSeq )
         result = myhmm.backward("START")
         print("result",result)
-
+        
         viterbiPath = myhmm.backwardAlign("START")
         print("viterbiPath")
         print("\t".join(viterbiPath["keys"]))

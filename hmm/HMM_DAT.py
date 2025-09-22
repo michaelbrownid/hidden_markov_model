@@ -46,20 +46,21 @@ class DataSeq:
 
 ################################        
 class Data:
-    def __init__( self, injasonfile ):
-        self.jsonfile = injasonfile
+    def __init__( self, injson, isFile=True ):
         self.json = None
         self.nameToIndex = {}
         self.typeToIndex = {}
 
-        self.readJSON( self.jsonfile)
+        self.readJSON( injson, isFile)
         
     ################################
-    def readJSON( self, jsonfile ):
+    def readJSON( self, jsonIN, isFile=True ):
 
         #### read in model
-        self.jsonfile = jsonfile
-        self.json = json.load( open(self.jsonfile) )
+        if isFile:
+            self.json = json.load( open(self.jsonIN) )
+        else:
+            self.json = json.loads( jsonIN )
 
         #### map names and states
         for ii in range( len(self.json) ):
@@ -71,7 +72,8 @@ class Data:
                 self.nameToIndex[myname] = ii
             else:
                 print(f"ERROR. myname {myname} is already taken")
-
+                sys.exit(1)
+                
             if mytype not in self.typeToIndex:
                 self.typeToIndex[mytype] = [ii]
             else:
