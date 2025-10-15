@@ -1,0 +1,6 @@
+{
+  "callArgs": "HMM_VEC_TRAIN_ACC.py Namespace(model='TESTGOLD_hmm_vec_train_model.json', newmodel='TEST_hmm_vec_train_model_NEW.json', dataListTSV='/dev/fd/63')",
+  "nlpPerSymbolAvg": -2912.5567078013805,
+  "nlpPerSymbolNumObj": 1,
+  "resultNlpPerSymbol": "TESTGOLD_hmm_vec_train_input.data\t-2912.5567078013805\t98"
+}

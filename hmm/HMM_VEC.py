@@ -66,6 +66,21 @@ def nladd( nl1, nl2):
     return(nl1 + nl(1.0+math.exp(-nl2+nl1)))
 
 ################################
+def statepathToString( statepath ):
+    """from backwardsAlign:
+    statepath["keys"]=["targetOutputSeq","thisstate","begin","end","localLen","dataNames","nextstate","localNlpOut","localNlpTrans","viterbiprob","sumprob"]
+    statepath["key2Idx"] = dict( (name, idx) for (idx, name) in enumerate(statepath["keys"]) )
+    statepath["values"] = []
+    """
+    res = []
+    mykeys = statepath["keys"]
+    res.append("\t".join(mykeys))
+    for vv in statepath["values"]:
+        res.append("\t".join( [repr(xx) for xx in vv ] ) )
+    return("\n".join(res))
+
+################################
+
 class HMMStateOutputMVN:
     def __init__(self, json):
         self.name = None
@@ -385,9 +400,9 @@ class HMM:
         for ii in self.typeToIndex["HMMStateOutputMVN"]:
             self.model[ii].countsData = []
             self.model[ii].countsPosterior = []
-            self.model[ii].sums = None # 0.0*np.array( self.targetOutput[0] ) # Sum of counts
-            self.model[ii].sumofsqs = None # 0.001+0.0*np.array( self.targetOutput[0] ) # Sum of square counts. small prior on variance
-            self.model[ii].sumofweights = None # 0.001 # Sum of weights
+            self.model[ii].sums = None 
+            self.model[ii].sumofsqs = None 
+            self.model[ii].sumofweights = None 
 
     ################################
     def clearMemo( self ):
@@ -431,8 +446,8 @@ class HMM:
                 #### handle first time after data was set to get dimension
                 if outputthisstate.sums is None:
                     outputthisstate.sums = 0.0*np.array( self.targetOutput[0] ) # Sum of counts
-                    outputthisstate.sumofsqs = 0.001+0.0*np.array( self.targetOutput[0] ) # Sum of square counts. small prior on variance
-                    outputthisstate.sumofweights = 1.0 # Sum of weights. One count of 0.001
+                    outputthisstate.sumofsqs = 0.001+0.0*np.array( self.targetOutput[0] ) # Sum of square counts. 0.001 small prior on variance to guard against inf prob at zero var.
+                    outputthisstate.sumofweights = 0.0 # Sum of weights.
 
                 outputthisstate.countsData.append( emission )
                 weight = 1.0
@@ -452,7 +467,7 @@ class HMM:
 
             # do NO training if no data (never visited in viterbi path
             if len(state.counts)<1:
-                print("NOTrain!",state.name)
+                print("NOTrain!",state.name,file=sys.stderr)
                 continue
 
             ## add prior
@@ -465,10 +480,10 @@ class HMM:
 
             # TODO: change to online for loop
             sumCounts = np.sum(npc,axis=0)
-            print("estimateModelFromCounts_sumCounts", state.name, sumCounts)
+            print("estimateModelFromCounts_sumCounts", state.name, sumCounts,file=sys.stderr)
             
             probs = sumCounts/np.sum(sumCounts)
-            print("estimateModelFromCounts_probs", probs)
+            print("estimateModelFromCounts_probs", probs,file=sys.stderr)
             state.nextp = [ nl( xx ) for xx in probs ]
 
         for ii in self.typeToIndex["HMMStateOutputMVN"]:
@@ -489,14 +504,14 @@ class HMM:
 
             # do NO training if no data (never visited in viterbi path
             if len(state.countsData)<1:
-                print("NOTrain!",state.name)
+                print("NOTrain!",state.name,file=sys.stderr)
                 continue
             
             #### cycle through coutsData and countsPosterior summing up weighted data and weights
             meanEst = state.sums / state.sumofweights
-            print("meanEst",meanEst)
+            print("meanEst",meanEst,file=sys.stderr)
             sdEst = np.sqrt( (state.sumofsqs/state.sumofweights) - meanEst*meanEst )
-            print("sdEst",sdEst)
+            print("sdEst",sdEst,file=sys.stderr)
             state.mean = meanEst.tolist() # tolist for json output
             state.sd = sdEst.tolist() # tolist for json output
             

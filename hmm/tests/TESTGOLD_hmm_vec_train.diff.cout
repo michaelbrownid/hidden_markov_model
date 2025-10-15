@@ -1,0 +1,19 @@
+diffmax HMMState 6 0.0
+diffmax HMMState 7 0.0
+diffmax HMMState 8 0.0
+diffmax HMMState 9 0.0
+diffmax HMMState 10 0.0
+diffmax HMMState 11 0.0
+diffmax HMMState 12 0.0
+diffmax mean HMMStateOutputMVN 0 0.0
+diffmax sd HMMStateOutputMVN 0 0.0
+diffmax mean HMMStateOutputMVN 1 0.0
+diffmax sd HMMStateOutputMVN 1 0.0
+diffmax mean HMMStateOutputMVN 2 0.0
+diffmax sd HMMStateOutputMVN 2 0.0
+diffmax mean HMMStateOutputMVN 3 0.0
+diffmax sd HMMStateOutputMVN 3 0.0
+diffmax mean HMMStateOutputMVN 4 0.0
+diffmax sd HMMStateOutputMVN 4 0.0
+diffmax mean HMMStateOutputMVN 5 0.0
+diffmax sd HMMStateOutputMVN 5 0.0

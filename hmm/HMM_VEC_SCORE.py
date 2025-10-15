@@ -1,4 +1,4 @@
-# train HMM on multiple inputs accumulating Viberbi counts
+# score set of video embedding vectors udner HMM 
 import argparse
 import pathlib
 import sys
@@ -14,13 +14,14 @@ except ImportError:
 
 ################################
 def main( args ):
-    #### model to accumulate counts
+
     hmmAcc = HMM_VEC.HMM()
     hmmAcc.readJSON(args.model)
     hmmAcc.clearCounts()
     
-    #### cycle through training objects, parse, accumulate counts
+    #### cycle through training objects, parse, output scores, and parses
     resultNlpPerSymbol = []
+    resultViterbi = []
     for datafile in open(args.dataListTSV).read().splitlines():
 
         if datafile[0] == "#": continue
@@ -39,44 +40,31 @@ def main( args ):
 
         #### parse
         result = hmmAcc.backward("START")
+        viterbiPath = hmmAcc.backwardAlign("START")
         nlpPerSymbol = result[0]/len(hmmAcc.targetOutput)
-        thisresult = ( hmmAcc.targetOutputSeq, nlpPerSymbol, len(hmmAcc.targetOutput))
+        thisresult = ( hmmAcc.targetOutputSeq, nlpPerSymbol, len(hmmAcc.targetOutput) )
         print("thisresult",thisresult, file=sys.stderr)
         resultNlpPerSymbol.append( thisresult )
-
-        #### get Viterbi path and add counts
-        viterbiPath = hmmAcc.backwardAlign("START")
-        hmmAcc.addCountsFromViterbi( viterbiPath )
-
+        resultViterbi.append( (hmmAcc.targetOutputSeq, HMM_VEC.statepathToString( viterbiPath)))
 
     #### compute average nlpPerSymbol
     nlpPerSymbolAvg = sum( [ xx[1] for xx in resultNlpPerSymbol ] ) / len(resultNlpPerSymbol)
                            
-    #### estimate model from accumulated counts
-    hmmAcc.estimateModelFromCounts()
-    ofp = open(args.newmodel,"w")
-    print(hmmAcc,file=ofp)
-    ofp.close()
-
     #### output info
     info = dict()
-    info["callArgs"]="HMM_VEC_TRAIN_ACC.py %s" % args
+    info["callArgs"]="HMM_VEC_SCORE.py %s" % args
     info["nlpPerSymbolAvg"] = nlpPerSymbolAvg
-    info["nlpPerSymbolNumObj"] = len(resultNlpPerSymbol)
+    info["nlpPerSymbolNum"] = len(resultNlpPerSymbol)
     tsvrows = [ "\t".join( map(str, row) ) for row in resultNlpPerSymbol]
     tsvdata = "\n".join( tsvrows )
     info["resultNlpPerSymbol"]= tsvdata
+    info["resultViterbi"] = resultViterbi
     print(json.dumps(info, indent=2))
     
-    # #### check against old
-    # hmmOld = HMM_VEC.HMM()
-    # hmmOld.readJSON("NEWMODEL_0.json")
-    # hmmAcc.diffmax(hmmOld)
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", help="model file name viz RB_model.json")
-    parser.add_argument("--newmodel", help="newly estimated model file name to write viz RB_model_estimated.json")
     parser.add_argument("--dataListTSV", help="list of TSV input objects viz: RB_06.json.embeddings. Code converts to JSON using generateData and loads on the fly.")
     args = parser.parse_args()
     main(args)
