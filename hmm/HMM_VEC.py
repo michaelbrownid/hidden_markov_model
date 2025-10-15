@@ -24,14 +24,6 @@ except ImportError:
 
 - always end at LAST
 
-- path probabilities in memo tables are stored as (
-Viterbi probability,
-Viterbi Consumed Length,
-Viterbi best choice,
-localNlpOut,
-localNlpTrans,
-summed probability all paths
-)
 
 """
 
@@ -64,6 +56,41 @@ def nladd( nl1, nl2):
         (nl2,nl1)=(nl1,nl2)
     #print("nladd",nl1,nl2)
     return(nl1 + nl(1.0+math.exp(-nl2+nl1)))
+
+################################
+class TableEntry:
+
+    """ - path probabilities in memo tables are stored as (
+Viterbi probability,
+Viterbi Consumed Length,
+Viterbi best choice,
+localNlpOut,
+localNlpTrans,
+summed probability all paths
+)
+    """
+
+    def __init__(self, nlpIN):
+        self.vitProb = nlpIN
+        self.vitLen = 0
+        self.vitBest = "None"
+        self.localNlpOut = 0
+        self.localNlpTrans = 0
+        self.sumProb = nlpIN
+
+    @classmethod
+    def full(cls, vitProbIN, vitLenIN, vitBestIN, localNlpOutIN, localNlpTransIN, sumProbIN):
+        tmp = cls(vitProbIN)
+        
+        tmp.vitProb = vitProbIN
+        tmp.vitLen = vitLenIN
+        tmp.vitBest = vitBestIN
+        tmp.localNlpOut = localNlpOutIN
+        tmp.localNlpTrans = localNlpTransIN
+        tmp.sumProb = sumProbIN
+
+        return(tmp)
+        
 
 ################################
 def statepathToString( statepath ):
@@ -302,15 +329,15 @@ class HMM:
         if thisstate=="LAST":
             if (end-begin)!=0:
                 # LAST cannot derive anything, so prob=0.0
-                result = (nl(0.0),0,"None",0,0,nl(0.0))
+                result = TableEntry(nl(0.0))
             else:
-                result = (nl(1.0),0,"None",0,0,nl(1.0)) # prob=1.0
+                result = TableEntry(nl(1.0))
             self.memo[self.key(thisstate,begin,end)]=result
             return(result)
 
         if (end-begin)<0:
             # impossible derivation
-            result = (nl(0.0),0,"None",0,0,nl(0.0))
+            result = TableEntry(nl(0.0))
             self.memo[self.key(thisstate,begin,end)]=result
             return(result)
 
@@ -321,14 +348,14 @@ class HMM:
         #### TODO: implement banding which requires constraints on states
             
         # start with probability 0
-        overallresult = (nl(0.0),0,"None",0,0,nl(0.0))
+        overallresult = TableEntry(nl(0.0))
         Zsum = nl(0.0)
 
         # output the data point at begin
         if this.probOut != "SILENT":
             if (end-begin)<=0:
                 # impossible derivation for NOT SILENT
-                result = (nl(0.0),0,"None",0,0,nl(0.0))
+                result = TableEntry(nl(0.0))
                 self.memo[self.key(thisstate,begin,end)]=result
                 return(result)
             localNlp = self.name2state(this.probOut).nlp( self.targetOutput[begin] )
@@ -346,16 +373,16 @@ class HMM:
             # continue the derivation
             rhs = self.backward( this.nexts[ch], begin+localLen, end)
 
-            ViterbiNlp = localNlp + transNlp + rhs[0]
-            Zsum = nladd(Zsum, localNlp + transNlp + rhs[-1])
+            ViterbiNlp = localNlp + transNlp + rhs.vitProb
+            Zsum = nladd(Zsum, localNlp + transNlp + rhs.sumProb)
 
-            if ViterbiNlp<overallresult[0]:
+            if ViterbiNlp<overallresult.vitProb:
                 # update viterbi, if nl is smaller, probability is larger
-                overallresult = (ViterbiNlp, localLen, this.nexts[ch], localNlp, transNlp, nl(0.0))
+                overallresult = TableEntry.full(ViterbiNlp, localLen, this.nexts[ch], localNlp, transNlp, nl(0.0))
             #print("***",this.name,begin,end,"ch",ch,"ViterbiNlp",ViterbiNlp, "localNlp",localNlp,"transNlp",transNlp,"Zsum",Zsum,"overallresult",overallresult)
             
         # put Zsum back in after summing over all
-        overallresult = (overallresult[0],overallresult[1],overallresult[2],overallresult[3],overallresult[4],Zsum)
+        overallresult.sumProb = Zsum
         self.memo[self.key(thisstate,begin,end)]=overallresult
         return(overallresult)
 
@@ -381,12 +408,12 @@ class HMM:
         statepath["values"] = []
         
         while thisstate!="LAST":
-            (viterbiprob, localLen, viterbichoice, localNlpOut, localNlpTrans, sumprob) = self.memo[self.key(thisstate,begin,end)]
-            statepath["values"].append( [self.targetOutputSeq, thisstate,begin,end, localLen, self.targetOutputNames[begin], viterbichoice, localNlpOut, localNlpTrans, viterbiprob, sumprob] )
+            te = self.memo[self.key(thisstate,begin,end)]
+            statepath["values"].append( [self.targetOutputSeq, thisstate,begin,end, te.vitLen, self.targetOutputNames[begin], te.vitBest, te.localNlpOut, te.localNlpTrans, te.vitProb, te.sumProb] )
 
             #### conusume localLen and move to next best state
-            begin = begin+localLen
-            thisstate = viterbichoice
+            begin = begin+te.vitLen
+            thisstate = te.vitBest
 
         return(statepath)
 

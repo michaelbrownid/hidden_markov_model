@@ -39,7 +39,7 @@ def main( args ):
 
         #### parse
         result = hmmAcc.backward("START")
-        nlpPerSymbol = result[0]/len(hmmAcc.targetOutput)
+        nlpPerSymbol = result.vitProb/len(hmmAcc.targetOutput)
         thisresult = ( hmmAcc.targetOutputSeq, nlpPerSymbol, len(hmmAcc.targetOutput))
         print("thisresult",thisresult, file=sys.stderr)
         resultNlpPerSymbol.append( thisresult )
