@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 import sys
+import random
 try:
     from . import HMM_DAT
 except ImportError:
@@ -118,6 +119,8 @@ class HMMStateOutputMVN:
         self.sums = None # Sum of counts
         self.sumofsqs = None # Sum of square counts
         self.sumofweights = None # Sum of weights
+        self.NlpALL = None
+        self.NlpALLArgsort = None
         self.readJSON( json )
 
     def nlp( self, output ):
@@ -137,7 +140,7 @@ class HMMStateOutputMVN:
         return(myprod)
 
     def generate( self ):
-        #### generate diagonal MVG point and nlp
+        #### generate diagonal MVN point and nlp
         point = np.random.normal( loc = self.mean, scale= self.sd)
         return( (point, self.nlp(point) ) )
                 
@@ -161,6 +164,29 @@ class HMMStateOutputMVN:
         self.mean = json["mean"]
         self.sd =   json["sd"]
 
+    def computeNlpAll( self, targetOutput):
+        "compute self.NlpALL under this model state of all vectors in targetOutput"
+        print(f"computeNlpAll for {self.name} over {len(targetOutput)} vectors", file=sys.stderr)
+        if self.NlpALL is None:
+            self.NlpALL = [ self.nlp(xx) for xx in targetOutput]
+
+    def selectNlpObject( self, blacklist=None ):
+        "select the top Nlp vector not in blacklist"
+        if self.NlpALLArgsort is None:
+            self.NlpALLArgsort = np.argsort(self.NlpALL) # indices of top values, ascending
+        if blacklist is None:
+            # take the top
+            selectedIdx = int(self.NlpALLArgsort[0])
+        else:
+            for jj in range(len(self.NlpALLArgsort)):
+                selectedIdx = int(self.NlpALLArgsort[jj]) 
+                if selectedIdx not in blacklist:
+                    break
+                else:
+                    #print("blacklist for",self.name,jj,selectedIdx,self.NlpALL[selectedIdx])
+                    pass
+        return( (selectedIdx,self.NlpALL[selectedIdx]) )
+        
 ################################
 class HMMState:
     def __init__(self, json):
@@ -290,6 +316,8 @@ class HMM:
 
         """Generate random strings from the HMM"""
 
+        result = []
+        
         myprod = nl(1.0)
         here = "START" # by convention always start at START
         while here != "LAST": # by convention always end at LAST
@@ -297,15 +325,20 @@ class HMM:
             # output if not SILENT and transistion
             if not herest.probOut == "SILENT":
                 (output,nlp) = self.name2state(herest.probOut).generate()
-                print(json.dumps(output.tolist()), "#output",herest.name,  herest.probOut, "output", "nlp", nlp)
+                result.append( {"outputName":herest.name,  "outputProbOut": herest.probOut, "outputNlp": nlp} )
                 myprod = myprod + nlp
 
             myprob = [probFromNlp(xx) for xx in herest.nextp]
+            #print("sum(myprob)",sum(myprob)) # sum(myprob) 0.999999 # causes error
+            Z = sum(myprob)
+            myprob = [xx/Z for xx in myprob]
             ch = np.random.choice(len(myprob), p=myprob)
             myprod = myprod + herest.nextp[ch]
-            print("# trans",herest.name,  "to", herest.nexts[ch], "ch", ch, "transNlp", herest.nextp[ch], "myprod", myprod)
+            result.append( { "transName":herest.name,  "transTo": herest.nexts[ch], "transCh": ch, "transNlp": herest.nextp[ch], "myprod": myprod } )
             here = herest.nexts[ch]
 
+        return(result)
+    
     ################################
     def backward( self, thisstate, begin=None, end=None):
 
@@ -541,7 +574,16 @@ class HMM:
             print("sdEst",sdEst,file=sys.stderr)
             state.mean = meanEst.tolist() # tolist for json output
             state.sd = sdEst.tolist() # tolist for json output
-            
+
+    ################################
+    def computeNlpModelStateByObjects(self):
+        """Compute negative log probability of each of the $O$ objects
+        (embeddings) under each of the $M$ model states NLP[M,O]"""
+
+        #### Cycle through model output states and compute NLP of each of targetOutput
+        for modelIdx in self.typeToIndex["HMMStateOutputMVN"]:
+            self.model[modelIdx].computeNlpAll( self.targetOutput)
+        
     ################################
     def computePrev( self, thisstate ):
 
@@ -980,7 +1022,7 @@ def main():
 
     if False:
         print("================================")
-        myhmm.generate()
+        print(myhmm.generate())
         print("================================")
 
     if True:

@@ -1,4 +1,5 @@
 import numpy as np
+import argparse
 
 """ Generate a model that looks like:
     [
@@ -42,24 +43,24 @@ def almostUniform( num ):
     #print("Sum:", p.sum())
     return(p)
 
-def genNext( nn ):
+def genNext( nn, prefix ):
     # [ ["LAST", 0.7], ["RBS_1",0.15], ["RBS_0",0.15 ] ]
     probs = almostUniform(nn+1) # plus LAST
     tmp = []
     for ii in range(nn):
-        name = "RBS_%d" % ii
+        name = "%s_%d" % (prefix,ii)
         tmp.append('["%s",%f]' % (name,probs[ii]))
     name = "LAST"
     tmp.append('["%s",%f]' % (name,probs[-1]))
     return('[ %s ]' % ", ".join(tmp))
         
-def main():
+def main( args ):
 
-    num = 6
+    num = args.numCenters
     model = []
     
     #### Generate output = mean SD
-    dat = open("kmeans.dat").read().splitlines()
+    dat = open(args.meanSdFile).read().splitlines()
 
     ii = 0
     while ii<len(dat):
@@ -67,7 +68,7 @@ def main():
         (idx,type,data) = dat[ii].split(",",2)
         tmp.append('"type": "HMMStateOutputMVN"')
         
-        name = "RBS_%d_out" % int(ii/2)
+        name = "%s_%d_out" % (args.prefixName,int(ii/2))
         tmp.append('"name": "%s"' % name)
 
         #### replace kmeans with normal random
@@ -101,18 +102,25 @@ def main():
     for nn in range(num):
         tmp = []
         tmp.append('"type": "HMMState"')
-        tmp.append('"name": "RBS_%d"' % nn)
-        tmp.append('"probOut": "RBS_%d_out"' % nn)
-        tmp.append('"next": %s' % genNext( num ))
+        tmp.append('"name": "%s_%d"' % (args.prefixName,nn))
+        tmp.append('"probOut": "%s_%d_out"' % (args.prefixName,nn))
+        tmp.append('"next": %s' % genNext( num, args.prefixName ))
         model.append('{\n%s\n}\n' % ",\n".join(tmp))
 
     tmp = []
     tmp.append('"type": "HMMState"')
     tmp.append('"name": "START"')
     tmp.append('"probOut": "SILENT"')
-    tmp.append('"next": %s' % genNext( num ))
+    tmp.append('"next": %s' % genNext( num, args.prefixName ))
     model.append('{\n%s\n}\n' % ",\n".join(tmp))
 
     print('[\n%s\n]\n' % ",\n".join(model))
 
-main()    
+if __name__ == "__main__":
+    #synTest()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--numCenters", type=int, help="kmeans number of centers")
+    parser.add_argument("--meanSdFile", help="file to input mean/sd vectors")
+    parser.add_argument("--prefixName", help="prefix to add to names of states")
+    args = parser.parse_args()
+    main(args)
